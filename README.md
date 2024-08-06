@@ -2,7 +2,7 @@
 <img src="logo.png" width="70%" height="70%">
 </p>
 <h1> <p align="center">
-    Unsupervised Representation Learning for Spatial Transcriptomics with Spatially Informed Graph Structure Learning
+    Spatially Informed Graph Structure Learning Extracts Insights from Spatial Transcriptomics
 </p> </h1>
 
 

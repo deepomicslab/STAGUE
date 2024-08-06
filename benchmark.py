@@ -174,6 +174,7 @@ def parse_arguments():
     parser.add_argument('--maskfeat_rate_anchor', type=float, default=0.9)
     parser.add_argument('--tau', type=float, default=0.999)
     parser.add_argument('--no_bn', action='store_true')
+    parser.add_argument('--sparse_learner', action='store_true')
 
     args = parser.parse_args()
 

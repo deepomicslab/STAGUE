@@ -1,7 +1,7 @@
 import copy
 import os
 import argparse
-from src import GCL, GraphLearner
+from src import GCL, GraphLearner, GraphLearnerSparse
 from src.data_loader import load_data_from_raw
 from src.utils import *
 from sklearn.cluster import KMeans
@@ -16,7 +16,7 @@ import pandas as pd
 class STAGUE:
     def __init__(self, args):
         self.args = args
-        adata, gene_exp, labels, nclasses, adj_knn, cell_coords = load_data_from_raw(args)
+        adata, gene_exp, labels, nclasses, adj_knn, cell_coords, dist_sort, dist_sort_idx = load_data_from_raw(args)
         gene_exp = gene_exp.to(args.device)
 
         self.adata = adata
@@ -25,8 +25,8 @@ class STAGUE:
         self.nclasses = nclasses
         self.adj_knn = adj_knn
         self.cell_coords = cell_coords
-        distance = distance_matrix(self.cell_coords.numpy(), self.cell_coords.numpy())
-        self.dist_sort_idx = distance.argsort(axis=1)
+        self.dist_sort = dist_sort
+        self.dist_sort_idx = dist_sort_idx
 
     def setup_seed(self, seed):
         torch.manual_seed(seed)
@@ -79,9 +79,15 @@ class STAGUE:
                     hidden_dim=args.hidden_dim, emb_dim=args.rep_dim, proj_dim=args.proj_dim,
                     dropout=args.dropout, dropout_adj=args.dropedge_rate, margin=args.margin, bn=bn)
 
-        model.graph_lerner = GraphLearner(nlayers=args.nlayers, isize=args.exp_out, neighbor=args.k,
-                                          gamma=args.gamma, adj=anchor_adj, coords=self.cell_coords,
-                                          device=args.device, omega=args.adj_weight)
+        if args.sparse_learner:
+            model.graph_lerner = GraphLearnerSparse(nlayers=args.nlayers, isize=args.exp_out, neighbor=args.k,
+                                                    gamma=args.gamma, adj=anchor_adj, d_sorted=self.dist_sort,
+                                                    d_indices=self.dist_sort_idx, device=args.device,
+                                                    omega=args.adj_weight)
+        else:
+            model.graph_lerner = GraphLearner(nlayers=args.nlayers, isize=args.exp_out, neighbor=args.k,
+                                              gamma=args.gamma, adj=anchor_adj, coords=self.cell_coords,
+                                              device=args.device, omega=args.adj_weight)
 
         model = model.to(args.device)
 
@@ -109,16 +115,27 @@ class STAGUE:
             d_neg = F.pairwise_distance(z2, z1_neg)
             margin_label = -1 * torch.ones_like(d_pos)
 
-            loss_nt = model.sim_loss(z1, z2, args.temperature)
+            # loss_nt
+            if args.sim_batch_size == 0:
+                loss_nt = model.sim_loss(z1, z2, args.temperature)
+            else:
+                node_indices = list(range(self.gene_exp.shape[0]))
+                batches = split_batch(node_indices, args.sim_batch_size)
+                loss_nt = 0
+                for batch in batches:
+                    weight = len(batch) / self.gene_exp.shape[0]
+                    loss_nt += model.sim_loss(z1[batch], z2[batch], args.temperature) * weight
+
             loss_triplet = model.margin_loss(d_pos, d_neg, margin_label) * args.margin_weight
             loss = loss_nt + loss_triplet
             loss.backward()
             optimizer.step()
 
             # Structure Bootstrapping
-            anchor_adj = dense2sparse(
-                anchor_adj.to_dense() * args.tau + learned_adj.detach().to_dense() * (1 - args.tau)
-            )
+            anchor_adj = anchor_adj.mul_nnz(torch.tensor(args.tau, dtype=torch.float32), layout='coo')
+            learned_ = learned_adj.detach().mul_nnz(
+                torch.tensor(1 - args.tau, dtype=torch.float32), layout='coo')
+            anchor_adj = anchor_adj.add(learned_)
 
             print("Epoch {:05d} | NT-Xent Loss {:.5f} | Triplet Loss {:.5f}".format(epoch, loss_nt.item(), loss_triplet.item()))
 
@@ -128,7 +145,7 @@ class STAGUE:
         self.adata.obs['cluster_pred'] = pd.Categorical(labels_pred)
 
         self.adata.obsp['learned_adj_normalized'] = csr_matrix(learned_adj.detach().cpu().to_dense().numpy())
-        self.adata.obsp['learned_adj_raw'] = csr_matrix(learned_adj_raw.detach().cpu().numpy())
+        self.adata.obsp['learned_adj_raw'] = csr_matrix(learned_adj_raw.detach().cpu().to_dense().numpy())
 
         adata_path = os.path.join(job_dir, 'adata_processed.h5ad'.format(trial))
         self.adata.write(adata_path)
@@ -176,6 +193,10 @@ def parse_arguments():
     parser.add_argument('--margin_weight', type=float, default=2,
                         help='Weight of the triplet loss.')
     # other optional arguments
+    parser.add_argument('--sparse_learner', action='store_true',
+                        help='Use the sparsification in the graph learner module.')
+    parser.add_argument('--sim_batch_size', type=int, default=0,
+                        help='Compute NT-Xent loss for a mini-batch or set to 0 to disable')
     parser.add_argument('--temperature', type=float, default=0.3,
                         help='Temperature parameter for the NT-Xent loss.')
     parser.add_argument('--exp_out', type=int, default=512,
