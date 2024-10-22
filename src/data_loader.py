@@ -9,6 +9,7 @@ from torch_geometric.utils import from_networkx, from_scipy_sparse_matrix
 from torch_sparse import SparseTensor
 from scipy.spatial import distance_matrix
 from scipy.sparse import csr_matrix
+from sklearn.neighbors import NearestNeighbors
 
 
 def get_coord(adata):
@@ -24,14 +25,43 @@ def get_coord(adata):
     return cell_coords
 
 
+def get_sketched_cci_fast(adata, num_neighbors=5, is_undirected=True, n=1000):
+    coords = get_coord(adata)
+    num_cells = adata.n_obs
+
+    k = num_neighbors
+    nbrs = NearestNeighbors(n_neighbors=k + 1, algorithm='auto').fit(coords)
+    k_nearest_idx = nbrs.kneighbors(coords, return_distance=False)
+
+    #
+    rows = np.repeat(np.arange(num_cells), k)
+    cols = k_nearest_idx[:, 1:].flatten()  # excluding self
+    data = np.ones(k * num_cells)
+    adj = csr_matrix((data, (rows, cols)), shape=(num_cells, num_cells))
+
+    #
+    if is_undirected:
+        adj = adj + adj.T
+        adj.data = np.ones_like(adj.data)
+
+    adata.obsp['knn_adj'] = adj
+
+    # +1 to retain n-nearest neighbors after excluding self
+    dist_n = min(num_cells, n + 1)
+    dist_sort, dist_sort_idx = nbrs.kneighbors(coords, n_neighbors=dist_n)
+
+    return adata, dist_sort, dist_sort_idx
+
+
 def get_sketched_cci(adata, num_neighbors=5, is_undirected=True):
     adjacency = np.zeros(shape=(adata.n_obs, adata.n_obs), dtype=int)
     coords = get_coord(adata)
-    dis = distance_matrix(coords, coords)
+    dist = distance_matrix(coords, coords)
 
-    neighbors_idx = np.argsort(dis, axis=1)
+    dist_sort_idx = np.argsort(dist, axis=1)
+    dist_sort = np.take_along_axis(dist, dist_sort_idx, axis=1)
 
-    for i, n_idx in enumerate(neighbors_idx):
+    for i, n_idx in enumerate(dist_sort_idx):
         n_idx = n_idx[n_idx != i][:num_neighbors]
         adjacency[i, n_idx] = 1
         assert adjacency[i, i] != 1
@@ -41,7 +71,7 @@ def get_sketched_cci(adata, num_neighbors=5, is_undirected=True):
         adjacency = ((adjacency + adjacency.T) > 0).astype(int)
 
     adata.obsp['knn_adj'] = csr_matrix(adjacency)
-    return adata
+    return adata, dist_sort, dist_sort_idx
 
 
 def load_data_from_raw(args):
@@ -77,6 +107,8 @@ def load_data_from_raw(args):
             key = 'cluster'
         elif 'domain' in adata.obs.columns:
             key = 'domain'
+        elif 'ground_truth' in adata.obs.columns:
+            key = 'ground_truth'
         else:
             raise Exception('Cluster annotations not found.')
         cat = adata.obs[key].astype('category').values
@@ -85,7 +117,11 @@ def load_data_from_raw(args):
     print(f'Clustering with {nclasses} centers')
 
     #
-    adata = get_sketched_cci(adata, num_neighbors=args.a_k)
+    if args.sparse_learner:
+        adata, dist_sort, dist_sort_idx = get_sketched_cci_fast(adata, num_neighbors=args.a_k)
+    else:
+        adata, dist_sort, dist_sort_idx = get_sketched_cci(adata, num_neighbors=args.a_k)
+
     (row, col), val = from_scipy_sparse_matrix(adata.obsp['knn_adj'])
     num_nodes = adata.obsp['knn_adj'].shape[0]
     adj_knn = SparseTensor(row=row, col=col, value=val.to(torch.float32), sparse_sizes=(num_nodes, num_nodes))
@@ -93,4 +129,4 @@ def load_data_from_raw(args):
     cell_coords = get_coord(adata)
     cell_coords = torch.tensor(cell_coords, dtype=torch.float32)
 
-    return adata, gene_exp, labels, nclasses, adj_knn, cell_coords
+    return adata, gene_exp, labels, nclasses, adj_knn, cell_coords, dist_sort, dist_sort_idx

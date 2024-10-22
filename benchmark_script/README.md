@@ -1,6 +1,18 @@
-The deep learning (DL) baseline methods, i.e., [DeepLinc](https://github.com/xryanglab/DeepLinc), [STAGATE](https://github.com/zhanglabtools/STAGATE), [SpaceFlow](https://github.com/hongleir/SpaceFlow?tab=readme-ov-file), and [GraphST](https://github.com/JinmiaoChenLab/GraphST), employed a variety of unsupervised clustering algorithms, such as k-means, mclust, and leiden.
+The baseline deep learning (DL) methods that learn cell embeddings, including
+[DeepLinc](https://github.com/xryanglab/DeepLinc),
+[CCST](https://github.com/xiaoyeye/CCST),
+[STAGATE](https://github.com/zhanglabtools/STAGATE),
+[SpaceFlow](https://github.com/hongleir/SpaceFlow?tab=readme-ov-file),
+[SiGra](https://github.com/QSong-github/SiGra),
+[SCAN-IT](https://github.com/zcang/SCAN-IT),
+[SEDR](https://sedr.readthedocs.io/en/latest/Tutorial1_Clustering.html),
+and [GraphST](https://github.com/JinmiaoChenLab/GraphST),
+employed a variety of unsupervised clustering algorithms to cluster the learned embeddings, 
+such as k-means, k-means++, mclust, louvain, and leiden.
 STAGUE provides the flexibility of choosing different clustering algorithms.
-However, in the benchmark analysis, we standardized the benchmarking workflow for STAGUE and other DL-based baselines 
+In the benchmarking study, we observed that various datasets exhibit preferences for different clustering algorithms, 
+with k-means consistently showing balanced performance and high efficiency. 
+We standardized the benchmarking workflow for STAGUE and other DL-based baselines 
 to ensure a fair comparison of the learned embeddings' representational capability 
 and mitigate the variability introduced by the choice of clustering algorithms:
 

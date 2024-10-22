@@ -2,7 +2,7 @@
 <img src="logo.png" width="70%" height="70%">
 </p>
 <h1> <p align="center">
-    Unsupervised Representation Learning for Spatial Transcriptomics with Spatially Informed Graph Structure Learning
+    Spatially Informed Graph Structure Learning Extracts Insights from Spatial Transcriptomics
 </p> </h1>
 
 
@@ -98,3 +98,15 @@ To visualize the detailed inputs and outputs of STAGUE, refer to the [Visualizat
 To reproduce the reported results in the paper, we provide all the related scripts under the `./benchmark_script` directory. 
 The benchmark scripts are generally configured with default hyperparameters.
 Navigate to `./benchmark_script` and run the bash script.
+
+
+# Reference
+[Spatially Informed Graph Structure Learning Extracts Insights from Spatial Transcriptomics. 
+*Advanced Science (2024)*.](https://doi.org/10.1002/advs.202403572) 
+
+
+# Contact
+If you have any questions, please feel free to contact us. We will respond as soon as possible.
+- Email: wannie2-c@my.cityu.edu.hk
+- WeChat: akaruin
+- WhatsApp: +852-53008094

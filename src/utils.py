@@ -135,3 +135,11 @@ def run_louvain(embedding, n_clusters, range_min=0, range_max=5, max_steps=100):
         this_step += 1
 
     return
+
+
+def split_batch(init_list, batch_size):
+    groups = zip(*(iter(init_list),) * batch_size)
+    end_list = [list(i) for i in groups]
+    count = len(init_list) % batch_size
+    end_list.append(init_list[-count:]) if count != 0 else end_list
+    return end_list
